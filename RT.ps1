@@ -1,3 +1,4 @@
+#
 #-------------------------------------------------------------------------
 #
 # Copyright (c) Microsoft.  All rights reserved.
@@ -39,6 +40,11 @@
 #   - Set Timer Schedule where positions represent: Seconds - Minutes - Hours - Day - Month - DayofWeek
 #     Example:  "*/30 * * * * *" to run on multiples of 30 seconds
 #     Example:  "0 */5 * * * *" to run on multiples of 5 minutes on the 0-second mark
+# Will Mason Edits
+# Because the code is leagacy i have done some work to prune its functionality
+# The Majority of commands are AzureRM and eventualy will need to be updated to supported Azure Commands
+# I have also removed the email alerting for this.  i will post it back in later or on another version.  This version is the production version and will be used to make 
+# the production function.  While the variables are hardcoded here, they will not be so in the final.
 #
 #--------------------------------------------------------------------------
 
@@ -48,20 +54,20 @@ Write-Output -InputObject "HA NVA timer trigger function executed at:$(Get-Date)
 # Set firewall monitoring variables here
 #--------------------------------------------------------------------------
 
-$VMFW1Name = VMXNC     # Set the Name of the primary NVA firewall
-$VMFW2Name = VMXEUS      # Set the Name of the secondary NVA firewall
-$FW1RGName = VMXCluster-NC    # Set the ResourceGroup that contains FW1
-$FW2RGName = VMXCluster-EUS    # Set the ResourceGroup that contains FW2
-$Monitor = TCPPort      # "VMStatus" or "TCPPort" are valid values
+$VMFW1Name = $env:FW1NAME      # Set the Name of the primary NVA firewall
+$VMFW2Name = $env:FW2NAME      # Set the Name of the secondary NVA firewall
+$FW1RGName = $env:FWRGNAME     # Set the ResourceGroup that contains FW1
+$FW2RGName = $env:FWRGNAME     # Set the ResourceGroup that contains FW2
+$Monitor = $env:FWMONITOR      # "VMStatus" or "TCPPort" are valid values
 
 #--------------------------------------------------------------------------
 # The parameters below are required if using "TCPPort" mode for monitoring
 #--------------------------------------------------------------------------
 
-$TCPFW1Server = 23.101.170.222   # Hostname of the site to be monitored via the primary NVA firewall if using "TCPPort"
-$TCPFW1Port = 80     # TCP Port of the site to be monitored via the primary NVA firewall if using "TCPPort"
-$TCPFW2Server = 40.88.123.202   # Hostname of the site to be monitored via the secondary NVA firewall if using "TCPPort"
-$TCPFW2Port = 80    # TCP Port of the site to be monitored via the secondary NVA firewall if using "TCPPort"
+$TCPFW1Server = $env:FW1FQDN   # Hostname of the site to be monitored via the primary NVA firewall if using "TCPPort"
+$TCPFW1Port = $env:FW1PORT     # TCP Port of the site to be monitored via the primary NVA firewall if using "TCPPort"
+$TCPFW2Server = $env:FW2FQDN   # Hostname of the site to be monitored via the secondary NVA firewall if using "TCPPort"
+$TCPFW2Port = $env:FW2PORT     # TCP Port of the site to be monitored via the secondary NVA firewall if using "TCPPort"
 
 #--------------------------------------------------------------------------
 # Set the failover and failback behavior for the firewalls
@@ -69,8 +75,8 @@ $TCPFW2Port = 80    # TCP Port of the site to be monitored via the secondary NVA
 
 $FailOver = $True              # Trigger to enable fail-over to secondary NVA firewall if primary NVA firewall drops when active
 $FailBack = $True              # Trigger to enable fail-back to primary NVA firewall is secondary NVA firewall drops when active
-$IntTries = $env:FWTRIES       # Number of Firewall tests to try 
-$IntSleep = $env:FWDELAY       # Delay in seconds between tries
+$IntTries = "2"       # Number of Firewall tests to try 
+$IntSleep = "3"       # Delay in seconds between tries
 
 #--------------------------------------------------------------------------
 # Code blocks for supporting functions
@@ -107,7 +113,7 @@ Function Start-Failover
     Set-AzureRmContext -SubscriptionId $SubscriptionID
     $RTable = @()
     $TagValue = $env:FWUDRTAG
-    $Res = Find-AzureRmResource -TagName nva_ha_udr -TagValue $TagValue
+    $Res = Get-AzureRmResource -TagName nva_ha_udr -TagValue $TagValue
 
     foreach ($RTable in $Res)
     {
@@ -139,7 +145,7 @@ Function Start-Failover
     }
   }
 
-  Send-AlertMessage -message "NVA Alert: Failover to Secondary FW2"
+  
 
 }
 
@@ -149,7 +155,7 @@ Function Start-Failback
   {
     Set-AzureRmContext -SubscriptionId $SubscriptionID
     $TagValue = $env:FWUDRTAG
-    $Res = Find-AzureRmResource -TagName nva_ha_udr -TagValue $TagValue
+    $Res = Get-AzureRmResource -TagName nva_ha_udr -TagValue $TagValue
 
     foreach ($RTable in $Res)
     {
@@ -181,7 +187,7 @@ Function Start-Failback
     }
   }
 
-  Send-AlertMessage -message "NVA Alert: Failback to Primary FW1"
+  
 
 }
 
@@ -321,7 +327,7 @@ elseif (-not ($FW1Down) -and ($FW2Down))
 elseif (($FW1Down) -and ($FW2Down))
 {
   Write-Output -InputObject 'Both FW1 and FW2 Down - Manual recovery action required'
-  Send-AlertMessage -message "NVA Alert: Both FW1 and FW2 Down - Manual recovery action is required"
+ 
 }
 else
 {
