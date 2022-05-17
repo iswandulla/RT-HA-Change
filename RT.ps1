@@ -1,4 +1,3 @@
-#
 #-------------------------------------------------------------------------
 #
 # Copyright (c) Microsoft.  All rights reserved.
@@ -43,7 +42,7 @@
 # Will Mason Edits
 # Because the code is leagacy i have done some work to prune its functionality
 # The Majority of commands are AzureRM and eventualy will need to be updated to supported Azure Commands
-# I have also removed the email alerting for this.  i will post it back in later or on another version.  This version is the production version and will be used to make 
+# I have also removed the email alerting for this.  i will post it back in later or on another version.  This version is the source test version and will be used to make 
 # the production function.  While the variables are hardcoded here, they will not be so in the final.
 #
 #--------------------------------------------------------------------------
@@ -54,20 +53,20 @@ Write-Output -InputObject "HA NVA timer trigger function executed at:$(Get-Date)
 # Set firewall monitoring variables here
 #--------------------------------------------------------------------------
 
-$VMFW1Name = $env:FW1NAME      # Set the Name of the primary NVA firewall
-$VMFW2Name = $env:FW2NAME      # Set the Name of the secondary NVA firewall
-$FW1RGName = $env:FWRGNAME     # Set the ResourceGroup that contains FW1
-$FW2RGName = $env:FWRGNAME     # Set the ResourceGroup that contains FW2
-$Monitor = $env:FWMONITOR      # "VMStatus" or "TCPPort" are valid values
+$VMFW1Name = "VMXNC"      # Set the Name of the primary NVA firewall
+$VMFW2Name = "VMXEUS"      # Set the Name of the secondary NVA firewall
+$FW1RGName = "VMXCluster-NC"    # Set the ResourceGroup that contains FW1
+$FW2RGName = "VMXCluster-EUS"     # Set the ResourceGroup that contains FW2
+$Monitor = "VMStatus"     # "VMStatus" or "TCPPort" are valid values
 
 #--------------------------------------------------------------------------
 # The parameters below are required if using "TCPPort" mode for monitoring
 #--------------------------------------------------------------------------
 
-$TCPFW1Server = $env:FW1FQDN   # Hostname of the site to be monitored via the primary NVA firewall if using "TCPPort"
-$TCPFW1Port = $env:FW1PORT     # TCP Port of the site to be monitored via the primary NVA firewall if using "TCPPort"
-$TCPFW2Server = $env:FW2FQDN   # Hostname of the site to be monitored via the secondary NVA firewall if using "TCPPort"
-$TCPFW2Port = $env:FW2PORT     # TCP Port of the site to be monitored via the secondary NVA firewall if using "TCPPort"
+$TCPFW1Server = 23.101.170.222   # Hostname of the site to be monitored via the primary NVA firewall if using "TCPPort"
+$TCPFW1Port = 80    # TCP Port of the site to be monitored via the primary NVA firewall if using "TCPPort"
+$TCPFW2Server = 40.88.123.202   # Hostname of the site to be monitored via the secondary NVA firewall if using "TCPPort"
+$TCPFW2Port = 80     # TCP Port of the site to be monitored via the secondary NVA firewall if using "TCPPort"
 
 #--------------------------------------------------------------------------
 # Set the failover and failback behavior for the firewalls
@@ -86,7 +85,7 @@ $IntSleep = "3"       # Delay in seconds between tries
 
 Function Test-VMStatus ($VM, $FWResourceGroup) 
 {
-  $VMDetail = Get-AzureRmVM -ResourceGroupName $FWResourceGroup -Name $VM -Status
+  $VMDetail = Get-AzVM -ResourceGroupName $FWResourceGroup -Name $VM -Status
   foreach ($VMStatus in $VMDetail.Statuses)
   { 
     $Status = $VMStatus.code
@@ -110,14 +109,14 @@ Function Test-TCPPort ($Server, $Port)
 Function Start-Failover 
 {
   foreach ($SubscriptionID in $Script:ListOfSubscriptionIDs){
-    Set-AzureRmContext -SubscriptionId $SubscriptionID
+    Set-AzContext -SubscriptionId $SubscriptionID
     $RTable = @()
-    $TagValue = $env:FWUDRTAG
-    $Res = Get-AzureRmResource -TagName nva_ha_udr -TagValue $TagValue
+    $TagValue = 'MerakiHA'
+    $Res = Get-AzResource -TagName nva_ha_udr -TagValue $TagValue
 
     foreach ($RTable in $Res)
     {
-      $Table = Get-AzureRmRouteTable -ResourceGroupName $RTable.ResourceGroupName -Name $RTable.Name
+      $Table = Get-AzRouteTable -ResourceGroupName $RTable.ResourceGroupName -Name $RTable.Name
       
       foreach ($RouteName in $Table.Routes)
       {
@@ -133,13 +132,13 @@ Function Start-Failover
           }
           elseif($RouteName.NextHopIpAddress -eq $PrimaryInts[$i])
           {
-            Set-AzureRmRouteConfig -Name $RouteName.Name  -NextHopType VirtualAppliance -RouteTable $Table -AddressPrefix $RouteName.AddressPrefix -NextHopIpAddress $SecondaryInts[$i] 
+            Set-AzRouteConfig -Name $RouteName.Name  -NextHopType VirtualAppliance -RouteTable $Table -AddressPrefix $RouteName.AddressPrefix -NextHopIpAddress $SecondaryInts[$i] 
           }
         }
 
       }
   
-      $UpdateTable = [scriptblock]{param($Table) Set-AzureRmRouteTable -RouteTable $Table}
+      $UpdateTable = [scriptblock]{param($Table) Set-AzRouteTable -RouteTable $Table}
       &$UpdateTable $Table
 
     }
@@ -153,13 +152,13 @@ Function Start-Failback
 {
   foreach ($SubscriptionID in $Script:ListOfSubscriptionIDs)
   {
-    Set-AzureRmContext -SubscriptionId $SubscriptionID
-    $TagValue = $env:FWUDRTAG
-    $Res = Get-AzureRmResource -TagName nva_ha_udr -TagValue $TagValue
+    Set-AzContext -SubscriptionId $SubscriptionID
+    $TagValue = 'MerakiHA'
+    $Res = Get-Azresource -TagName nva_ha_udr -TagValue $TagValue
 
     foreach ($RTable in $Res)
     {
-      $Table = Get-AzureRmRouteTable -ResourceGroupName $RTable.ResourceGroupName -Name $RTable.Name
+      $Table = Get-AzRouteTable -ResourceGroupName $RTable.ResourceGroupName -Name $RTable.Name
 
       foreach ($RouteName in $Table.Routes)
       {
@@ -175,13 +174,13 @@ Function Start-Failback
           }
           elseif($RouteName.NextHopIpAddress -eq $SecondaryInts[$i])
           {
-            Set-AzureRmRouteConfig -Name $RouteName.Name  -NextHopType VirtualAppliance -RouteTable $Table -AddressPrefix $RouteName.AddressPrefix -NextHopIpAddress $PrimaryInts[$i]
+            Set-AzRouteConfig -Name $RouteName.Name  -NextHopType VirtualAppliance -RouteTable $Table -AddressPrefix $RouteName.AddressPrefix -NextHopIpAddress $PrimaryInts[$i]
           }  
         }
 
       }  
 
-      $UpdateTable = [scriptblock]{param($Table) Set-AzureRmRouteTable -RouteTable $Table}
+      $UpdateTable = [scriptblock]{param($Table) Set-AzRouteTable -RouteTable $Table}
       &$UpdateTable $Table 
 
     }
@@ -193,9 +192,9 @@ Function Start-Failback
 
 Function Get-FWInterfaces
 {
-  $Nics = Get-AzureRmNetworkInterface | Where-Object -Property VirtualMachine -NE -Value $Null
-  $VMS1 = Get-AzureRmVM -Name $VMFW1Name -ResourceGroupName $FW1RGName
-  $VMS2 = Get-AzureRmVM -Name $VMFW2Name -ResourceGroupName $FW2RGName
+  $Nics = Get-AzNetworkInterface | Where-Object -Property VirtualMachine -NE -Value $Null
+  $VMS1 = Get-AzVM -Name $VMFW1Name -ResourceGroupName $FW1RGName
+  $VMS2 = Get-AzVM -Name $VMFW2Name -ResourceGroupName $FW2RGName
 
   foreach($Nic in $Nics)
   {
@@ -222,7 +221,7 @@ Function Get-FWInterfaces
 Function Get-Subscriptions
 {
   Write-Output -InputObject "Enumerating all subscriptins ..."
-  $Script:ListOfSubscriptionIDs = (Get-AzureRmSubscription).SubscriptionId
+  $Script:ListOfSubscriptionIDs = (Get-Azsubscription).SubscriptionId
   Write-Output -InputObject $Script:ListOfSubscriptionIDs
 }
 
@@ -230,13 +229,13 @@ Function Get-Subscriptions
 # Main code block for Azure function app                       
 #--------------------------------------------------------------------------
 
-$Password = ConvertTo-SecureString $env:SP_PASSWORD -AsPlainText -Force
-$Credential = New-Object System.Management.Automation.PSCredential ($env:SP_USERNAME, $Password)
-$AzureEnv = Get-AzureRmEnvironment -Name $env:AZURECLOUD
-Add-AzureRmAccount -ServicePrincipal -Tenant $env:TENANTID -Credential $Credential -SubscriptionId $env:SUBSCRIPTIONID -Environment $AzureEnv
+$Password = ConvertTo-SecureString MJt8Q~GejHo5HUc_60fzJQMjI7cXsGYQPAPQIaM3 -AsPlainText -Force
+$Credential = New-Object System.Management.Automation.PSCredential ("7788ac52-34cd-4119-8e5f-89b49887e7fe", $Password)
+$AzureEnv = Get-AzEnvironment -Name AzureCloud
+Add-AzAccount -ServicePrincipal -Tenant 663cbc2d-6d5d-43d1-90df-d94dfea99f85 -Credential $Credential -SubscriptionId a0a63775-8bdf-42e1-a9fe-83d6ac1810d7 -Environment $AzureEnv
 
-$Context = Get-AzureRmContext
-Set-AzureRmContext -Context $Context
+$Context = Get-AzContext
+Set-AzContext -Context $Context
 
 $Script:PrimaryInts = @()
 $Script:SecondaryInts = @()
@@ -249,7 +248,7 @@ $CtrFW2 = 0
 $FW1Down = $True
 $FW2Down = $True
 
-$VMS = Get-AzureRmVM
+$VMS = Get-AzVM
 
 Get-Subscriptions
 Get-FWInterfaces
